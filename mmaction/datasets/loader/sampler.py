@@ -8,6 +8,18 @@ from torch.distributed import get_world_size, get_rank
 from torch.utils.data.sampler import Sampler
 
 
+class SequentialSampler(Sampler):
+
+    def __init__(self, dataset, **kwargs):
+        self.dataset = dataset
+
+    def __iter__(self):
+        return iter(range(len(self.dataset)))
+
+    def __len__(self):
+        return len(self.dataset)
+
+
 class GroupSampler(Sampler):
 
     def __init__(self, dataset, samples_per_gpu=1):

@@ -3,7 +3,10 @@ from __future__ import division
 from collections import OrderedDict
 
 import torch
-from mmcv.runner import Runner, DistSamplerSeedHook
+# from mmcv.runner import Runner, DistSamplerSeedHook
+from mmcv.runner import DistSamplerSeedHook
+from epic.runner.runner import Runner
+
 from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
 
 from mmaction.core import (DistOptimizerHook, DistEvalTopKAccuracyHook,
@@ -19,6 +22,8 @@ def parse_losses(losses):
             log_vars[loss_name] = loss_value.mean()
         elif isinstance(loss_value, list):
             log_vars[loss_name] = sum(_loss.mean() for _loss in loss_value)
+        elif 'AP' in loss_name:
+            log_vars[loss_name] = loss_value
         else:
             raise TypeError(
                 '{} is not a tensor or list of tensors'.format(loss_name))
@@ -27,7 +32,10 @@ def parse_losses(losses):
 
     log_vars['loss'] = loss
     for name in log_vars:
-        log_vars[name] = log_vars[name].item()
+        if 'AP' in name:
+            pass
+        else:
+            log_vars[name] = log_vars[name].item()
 
     return loss, log_vars
 
@@ -36,9 +44,11 @@ def batch_processor(model, data, train_mode):
     losses = model(**data)
     loss, log_vars = parse_losses(losses)
 
+    num_samples = len(data['img_group_0'].data) if 'img_group_0' in data else len(data['feature'].data)
+
     outputs = dict(
         loss=loss, log_vars=log_vars,
-        num_samples=len(data['img_group_0'].data))
+        num_samples=num_samples)
 
     return outputs
 
@@ -59,7 +69,7 @@ def train_network(model,
         _non_dist_train(model, dataset, cfg, validate=validate)
 
 
-def _dist_train(model, dataset, cfg, validate=False):
+def _dist_train(model, datasets, cfg, validate=False):
     # prepare data loaders
     data_loaders = [
         build_dataloader(
@@ -67,6 +77,7 @@ def _dist_train(model, dataset, cfg, validate=False):
             cfg.data.videos_per_gpu,
             cfg.data.workers_per_gpu,
             dist=True)
+        for dataset in datasets
     ]
     # put model on gpus
     model = MMDistributedDataParallel(model.cuda())
@@ -102,7 +113,7 @@ def _dist_train(model, dataset, cfg, validate=False):
     runner.run(data_loaders, cfg.workflow, cfg.total_epochs)
 
 
-def _non_dist_train(model, dataset, cfg, validate=False):
+def _non_dist_train(model, datasets, cfg, validate=False):
     # prepare data loaders
     data_loaders = [
         build_dataloader(
@@ -110,7 +121,10 @@ def _non_dist_train(model, dataset, cfg, validate=False):
             cfg.data.videos_per_gpu,
             cfg.data.workers_per_gpu,
             cfg.gpus,
-            dist=False)
+            dist=False,
+            test_mode=dataset.test_mode,
+        )
+        for dataset in datasets
     ]
     # put model on gpus
     model = MMDataParallel(model, device_ids=range(cfg.gpus)).cuda()
