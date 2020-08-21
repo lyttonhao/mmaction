@@ -5,7 +5,7 @@ from collections import OrderedDict
 import torch
 # from mmcv.runner import Runner, DistSamplerSeedHook
 from mmcv.runner import DistSamplerSeedHook
-from epic.runner.runner import Runner
+from anticipation.runner.runner import Runner
 
 from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
 
